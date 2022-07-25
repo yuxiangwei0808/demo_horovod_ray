@@ -6,13 +6,19 @@ import os
 
 class BaseExecutor:
     def get_gpu_ids(self):
-        return ray.get_gpu_ids()
+        gpu_ids = ray.get_gpu_ids()
+        ip = ray._private.services.get_node_ip_address()
+        for item in gpu_ids:
+            current_gpu_id = item
+
+        return ip, current_gpu_id
+
 
 actor = []
 ip_gpu_dict = {}
 
 
-def start(address=None):
+def start(address='10.3.40.37:8888'):
     if address:
         ray.init(address=address)
 
@@ -23,44 +29,24 @@ def start(address=None):
         actor.append(base_actor)
 
         try:
-            gpu_ids = ray.get(base_actor.get_gpu_ids.remote(), timeout=3)
-            current_ip = ray._private.services.get_node_ip_address()
+            current_ip, gpu_ids = ray.get(base_actor.get_gpu_ids.remote(), timeout=3)
             actor.append(base_actor)
-            print(gpu_ids)
-            print(ray.available_resources())
 
+            dict_lines = []
+            sh_lines = []
             if current_ip in ip_gpu_dict.keys():
-                gpu_list = ip_gpu_dict[current_ip]
-                gpu_list.append(gpu_ids)
-
-                dic = current_ip + ':' + str(gpu_list) + '\n'
-                with open('dict.txt', 'r') as f:
-                    temp_lines = f.readlines()
-                    for num, line in enumerate(temp_lines):
-                        if current_ip in line:
-                            temp_lines[num] = dic
-                with open('dict.txt', 'w') as f:
-                    f.writelines(temp_lines)
-
-                dict_sh = 'echo' + current_ip + ':' + str(len(gpu_list)) + '\n'
-                with open('discover_hosts.sh', 'r') as f:
-                    temp_lines = f.readlines()
-                    for num, line in enumerate(temp_lines):
-                        if current_ip in line:
-                            temp_lines[num] = dict_sh
-                with open('discover_hosts.sh', 'w') as f:
-                    f.writelines(temp_lines)
-
+                ip_gpu_dict[current_ip].append(int(gpu_ids))
             else:
-                #  first write in the txt and sh, use 'a'
-                ip_gpu_dict[current_ip] = [gpu_ids]
-                dic = current_ip + ':' + str(gpu_ids) + '\n'
-                with open('dict.txt', 'a') as f:
-                    f.write(dic)
+                ip_gpu_dict[current_ip] = []
+                ip_gpu_dict[current_ip].append(int(gpu_ids))
 
-                dict_sh = 'echo' + current_ip + ':' + str(len(gpu_ids)) + '\n'
-                with open('discover_hosts.sh', 'a') as f:
-                    f.write(dict_sh)
+            for key in ip_gpu_dict:
+                dict_lines.append(str(key + ':' + f'{ip_gpu_dict[key]}' + '\n'))
+                sh_lines.append(str('echo ' + key + ':' + f'{len(ip_gpu_dict[key])}' + '\n'))
+            with open('dict_training.txt', 'w') as f:
+                f.writelines(dict_lines)
+            with open('discover_hosts.sh', 'w') as f:
+                f.writelines(sh_lines)
 
         except ray.exceptions.GetTimeoutError:
             del actor[-1]

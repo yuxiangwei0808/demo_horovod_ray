@@ -9,8 +9,9 @@ from torchvision import transforms
 from torchvision.transforms import ToTensor
 import torch.optim as optim
 import ray
+from torchvision.models import resnet18, ResNet18_Weights
 
-with open('dict.txt', 'r') as f:
+with open('dict_training.txt', 'r') as f:
     dic = f.read()
 
 rank = []
@@ -18,33 +19,23 @@ ip = []
 dic = dic.splitlines()
 for item in dic:
     if item:
+        temp_rank = []
         c_point = item.index(':')
-        rank.append(item[c_point + 1:])
+        gpu_rank = item[c_point + 1:]
+        gpu_rank = gpu_rank.strip('[')
+        gpu_rank = gpu_rank.strip(']')
+        gpu_rank_list = gpu_rank.split(',')
+        for i in gpu_rank_list:
+            temp_rank.append(int(i))
+
+        rank.append(temp_rank)
         ip.append(item[:c_point])
 
 
 def main():
-    class Net(nn.Module):
-        def __init__(self):
-            super(Net, self).__init__()
-            self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-            self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-            self.conv2_drop = nn.Dropout2d()
-            self.fc1 = nn.Linear(320, 50)
-            self.fc2 = nn.Linear(50, 10)
-
-        def forward(self, x):
-            x = F.relu(F.max_pool2d(self.conv1(x), 2))
-            x = F.relu(F.max_pool2d(self.conv2_drop(self.conv2(x)), 2))
-            x = x.view(-1, 320)
-            x = F.relu(self.fc1(x))
-            x = F.dropout(x, training=self.training)
-            x = self.fc2(x)
-            return F.log_softmax(x)
-
     hvd.init()
 
-    training_data = datasets.FashionMNIST(
+    training_data = datasets.CIFAR10(
         root="~/data",
         train=True,
         download=True,
@@ -52,7 +43,7 @@ def main():
     )
 
     # Download test data from open datasets.
-    test_data = datasets.FashionMNIST(
+    test_data = datasets.CIFAR10(
         root="~/data",
         train=False,
         download=True,
@@ -71,18 +62,18 @@ def main():
     test_loader = torch.utils.data.DataLoader(test_data, batch_size=64,
                                               sampler=test_sampler)
 
-    print('gpu_id, ', ray.get_gpu_ids())
     print('node_ip, ', ray._private.services.get_node_ip_address())
     current_ip = ray._private.services.get_node_ip_address()
     gpu_id = rank[ip.index(current_ip)]
 
     local_rank = hvd.local_rank()
     device = gpu_id[local_rank]
-
     torch.cuda.set_device(device)
-    model = Net().cuda()
 
-    optimizer = optim.SGD(model.parameters(), lr=0.001 * hvd.size())
+    model = resnet18(weights=ResNet18_Weights.DEFAULT).cuda()
+
+    criterion = torch.nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001 * hvd.size())
     optimizer = hvd.DistributedOptimizer(optimizer)
 
 
@@ -93,7 +84,7 @@ def main():
 
     @hvd.elastic.run
     def train(state):
-        for state.epoch in range(state.epoch, 100 + 1):
+        for state.epoch in range(state.epoch, 10 + 1):
             state.model.train()
             train_sampler.set_epoch(state.epoch)
             steps_remaining = len(train_loader) - state.batch
@@ -103,7 +94,7 @@ def main():
                 data, target = data.cuda(), target.cuda()
                 state.optimizer.zero_grad()
                 output = state.model(data)
-                loss = F.nll_loss(output, target)
+                loss = criterion(output, target)
                 loss.backward()
                 state.optimizer.step()
                 if state.batch % 10 == 0:
