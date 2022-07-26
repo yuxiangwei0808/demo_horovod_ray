@@ -8,7 +8,7 @@ from task1_hungary_resource_occupy import start, loop
 
 start(address='10.3.40.169:8888', requirement=8)
 
-thread_loop = threading.Thread(target=loop)
+thread_loop = threading.Thread(target=loop, daemon=True)
 thread_loop.start()
 
 s = time.time()
