@@ -11,7 +11,7 @@ import torch.optim as optim
 import ray
 from torchvision.models import resnet18, ResNet18_Weights
 
-with open('dict_training_2.txt', 'r') as f:
+with open('dict_training_3.txt', 'r') as f:
     dic = f.read()
 
 rank = []
@@ -105,7 +105,7 @@ def main():
                 state.commit()
             state.batch = 0
 
-    print('start_2')
+    print('start_3')
     state = hvd.elastic.TorchState(model, optimizer, epoch=1, batch=0)
     state.register_reset_callbacks([on_state_reset])
     train(state)
