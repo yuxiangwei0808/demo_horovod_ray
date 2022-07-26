@@ -84,7 +84,7 @@ def main():
 
     @hvd.elastic.run
     def train(state):
-        for state.epoch in range(state.epoch, 2 + 1):
+        for state.epoch in range(state.epoch, 10 + 1):
             state.model.train()
             train_sampler.set_epoch(state.epoch)
             steps_remaining = len(train_loader) - state.batch
@@ -105,7 +105,7 @@ def main():
                 state.commit()
             state.batch = 0
 
-    print('start')
+    print('start_2')
     state = hvd.elastic.TorchState(model, optimizer, epoch=1, batch=0)
     state.register_reset_callbacks([on_state_reset])
     train(state)
